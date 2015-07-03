@@ -15,16 +15,37 @@ def _run_urjtag(cmds):
 class UrJTAG(GenericProgrammer):
     needs_bitreverse = True
 
-    def __init__(self, cable, flash_proxy_basename=None):
+    def __init__(self, cable, flash_proxy_basename=None, pld="spartan-6"):
         GenericProgrammer.__init__(self, flash_proxy_basename)
         self.cable = cable
+
+        # These commands come from urjtag/doc/README.pld
+        if pld in ("spartan-3", "spartan-6"):
+            self.bypass = """
+instruction CFG_OUT  000100 BYPASS
+instruction CFG_IN   000101 BYPASS
+instruction JSTART   001100 BYPASS
+instruction JPROGRAM 001011 BYPASS
+"""
+        elif pld in ("virtex-4",):
+            self.bypass = """
+instruction CFG_OUT  1111000100 BYPASS
+instruction CFG_IN   1111000101 BYPASS
+instruction JPROGRAM 1111001011 BYPASS
+instruction JSTART   1111001100 BYPASS
+"""
+        else:
+            print("WARNING: Unknown PLD.")
+            self.bypass = ""
 
     def load_bitstream(self, bitstream_file):
         cmds = """cable {cable}
 detect
+{bypass}
 pld load {bitstream}
 quit
-""".format(bitstream=bitstream_file, cable=self.cable)
+""".format(bitstream=bitstream_file, cable=self.cable,
+           bypass=self.bypass)
         _run_urjtag(cmds)
 
     def flash(self, address, data_file):
