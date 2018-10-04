@@ -89,22 +89,30 @@ class XilinxVivadoToolchain:
         self.clocks = dict()
         self.false_paths = set()
 
-    def _build_batch(self, platform, sources, build_name):
+    def _build_batch(self, platform, sources, build_name, synth_mode="vivado"):
         tcl = []
         tcl.append("create_project -force -name {} -part {}".format(build_name, platform.device))
-        for filename, language, library in sources:
-            filename_tcl = "{" + filename + "}"
-            tcl.append("add_files " + filename_tcl)
-            tcl.append("set_property library {} [get_files {}]"
-                       .format(library, filename_tcl))
+        if synth_mode == "vivado":
+            # "-include_dirs {}" crashes Vivado 2016.4
+            for filename, language, library in sources:
+                filename_tcl = "{" + filename + "}"
+                tcl.append("add_files " + filename_tcl)
+                tcl.append("set_property library {} [get_files {}]"
+                           .format(library, filename_tcl))
 
         tcl.append("read_xdc {}.xdc".format(build_name))
         tcl.extend(c.format(build_name=build_name) for c in self.pre_synthesis_commands)
-        # "-include_dirs {}" crashes Vivado 2016.4
-        if platform.verilog_include_paths:
-            tcl.append("synth_design -top top -part {} -include_dirs {{{}}}".format(platform.device, " ".join(platform.verilog_include_paths)))
+
+        if synth_mode == "vivado":
+            if platform.verilog_include_paths:
+                tcl.append("synth_design -top top -part {} -include_dirs {{{}}}".format(platform.device, " ".join(platform.verilog_include_paths)))
+            else:
+                tcl.append("synth_design -top top -part {}".format(platform.device))
+        elif synth_mode == "yosys":
+            tcl.append("read_edif {}.edif".format(build_name))
         else:
-            tcl.append("synth_design -top top -part {}".format(platform.device))
+            raise OSError("Unknown synthesis mode! {}".format(synth_mode))
+
         tcl.append("report_timing_summary -file {}_timing_synth.rpt".format(build_name))
         tcl.append("report_utilization -hierarchical -file {}_utilization_hierarchical_synth.rpt".format(build_name))
         tcl.append("report_utilization -file {}_utilization_synth.rpt".format(build_name))
@@ -175,7 +183,7 @@ class XilinxVivadoToolchain:
         )
 
     def build(self, platform, fragment, build_dir="build", build_name="top",
-            toolchain_path="/opt/Xilinx/Vivado", source=True, run=True):
+            toolchain_path="/opt/Xilinx/Vivado", source=True, run=True, synth_mode="yosys"):
         os.makedirs(build_dir, exist_ok=True)
         cwd = os.getcwd()
         os.chdir(build_dir)
@@ -190,9 +198,13 @@ class XilinxVivadoToolchain:
         v_file = build_name + ".v"
         v_output.write(v_file)
         sources = platform.sources | {(v_file, "verilog", "work")}
-        self._build_batch(platform, sources, build_name)
+        self._build_batch(platform, sources, build_name, synth_mode=synth_mode)
         tools.write_to_file(build_name + ".xdc", _build_xdc(named_sc, named_pc))
         if run:
+            if synth_mode == "yosys":
+                common._run_yosys(platform.device, sources, platform.verilog_include_paths, build_name)
+            else:
+                raise OSError("Error!")
             _run_vivado(build_name, toolchain_path, source)
 
         os.chdir(cwd)

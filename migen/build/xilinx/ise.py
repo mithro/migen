@@ -62,25 +62,6 @@ def _build_xst_files(device, sources, vincpaths, build_name, xst_opt):
     tools.write_to_file(build_name + ".xst", xst_contents)
 
 
-def _run_yosys(device, sources, vincpaths, build_name):
-    ys_contents = ""
-    incflags = ""
-    for path in vincpaths:
-        incflags += " -I" + path
-    for filename, language, library in sources:
-        ys_contents += "read_{}{} {}\n".format(language, incflags, filename)
-
-    ys_contents += """hierarchy -check -top top
-proc; memory; opt; fsm; opt
-synth_xilinx -top top -edif {build_name}.edif""".format(build_name=build_name)
-
-    ys_name = build_name + ".ys"
-    tools.write_to_file(ys_name, ys_contents)
-    r = subprocess.call(["yosys", ys_name])
-    if r != 0:
-        raise OSError("Subprocess failed")
-
-
 def _run_ise(build_name, ise_path, source, mode, ngdbuild_opt,
         toolchain, platform, ver=None):
     if sys.platform == "win32" or sys.platform == "cygwin":
@@ -187,7 +168,7 @@ class XilinxISEToolchain:
                     _build_xst_files(platform.device, sources, platform.verilog_include_paths, build_name, self.xst_opt)
                     isemode = mode
                 else:
-                    _run_yosys(platform.device, sources, platform.verilog_include_paths, build_name)
+                    common._run_yosys(platform.device, sources, platform.verilog_include_paths, build_name)
                     isemode = "edif"
                     ngdbuild_opt += "-p " + platform.device
 
