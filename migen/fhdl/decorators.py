@@ -17,6 +17,8 @@ class ModuleTransformer:
         pass
 
     def wrap_class(self, victim):
+        self.__wrapped__ = victim
+
         class Wrapped(victim):
             def __init__(i, *args, **kwargs):
                 victim.__init__(i, *args, **kwargs)
@@ -33,6 +35,7 @@ class ModuleTransformer:
         return Wrapped
 
     def wrap_instance(self, victim):
+        self.__wrapped__ = victim
         self.transform_instance(victim)
         orig_get_fragment = victim.get_fragment
 

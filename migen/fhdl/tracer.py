@@ -94,6 +94,20 @@ def trace_back(varname=None):
     l = []
     frame = inspect.currentframe().f_back.f_back
     while frame is not None:
+        # Skip frames that are decorators, since they are supposed to
+        # be invisible glue, and not candiates for picking a name.  We
+        # rely on finding a __wrapped__ attribute on the "self" object
+        # in the frame, which migen.fhdl.decorators adds mimicking
+        # what functools.wraps() / functools.update_wrapper() adds.
+        #
+        # This check needs to be done very early to avoid detecting just the
+        # function name on this frame; we want to skip the *whole* frame.
+        #
+        if ("self" in frame.f_locals and
+            hasattr(frame.f_locals["self"], "__wrapped__")):
+            frame = frame.f_back             # Skip this frame
+            continue
+
         if varname is None:
             varname = get_var_name(frame)
         if varname is not None:
